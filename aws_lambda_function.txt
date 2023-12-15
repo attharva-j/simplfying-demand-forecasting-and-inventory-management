@@ -1,0 +1,130 @@
+import json
+import pandas as pd
+import numpy as np
+from datetime import datetime
+import random
+import boto3
+from botocore.exceptions import ClientError
+
+def lambda_handler(event, context):
+    # Function to generate a list by subtracting random integers
+    def generate_subtracted_list(starting_value, num_iterations, range_start, range_end):
+        result_list = [starting_value]
+        for _ in range(num_iterations):
+            random_subtract = random.randint(range_start, range_end)
+            new_value = result_list[-1] - random_subtract
+            result_list.append(new_value)
+        return result_list
+        
+    products = ['69_MOUNTMEND_8412','30_CULCHETH_5255','34_PITMERDEN_5215',
+    '1_HARDERSFIELD_5255','76_DONCASTER_2034','5_SUTTON_3348',
+    '1_HARDERSFIELD_8358','30_CULCHETH_4903','34_PITMERDEN_3782',
+    '1_HARDERSFIELD_4233','1_HARDERSFIELD_3830','78_EASTHAVEN_2628',
+    '30_CULCHETH_4196','22_SHARNWICK_3830','38_GOULCREST_8358',
+    '67_EANVERNESS_3961','22_SHARNWICK_3139','78_EASTHAVEN_3016',
+    '69_MOUNTMEND_7221','69_MOUNTMEND_3782']
+    
+    tat_df = pd.DataFrame({'product_id':products, 'turnaround_time':[np.random.randint(3, 11) for i in range(len(products))]})
+    
+    final_df = pd.DataFrame()
+    for prod in products:
+        dates = pd.date_range((datetime.now().strftime("%d-%m-%Y")), periods=15, freq='D')
+        series = pd.Series([prod]*len(dates))
+        stock_bal = generate_subtracted_list(np.random.randint(400, 600),14,50,80)
+        # len(dates), len(series), len(stock_bal)
+        temp_df = pd.DataFrame({'date':dates,'product_id': series, 'stock_balance':stock_bal})
+        final_df = pd.concat([final_df, temp_df])
+        
+    final_df = final_df.sort_values(by='date', ascending=True)
+    final_df['date'] = pd.to_datetime(final_df['date'])
+    final_df = pd.merge(left=final_df, right=tat_df, on='product_id', how='left')
+    
+    # Filter products that will go below the threshold after the specified number of days
+    shortlisted_products = final_df[(final_df['date'] <= final_df['date'] + pd.to_timedelta(final_df['turnaround_time'], unit='D')) & (final_df['stock_balance'] <= 100) & (final_df['stock_balance'] >= 0)]
+    
+    # Replace sender@example.com with your "From" address.
+    # This address must be verified with Amazon SES.
+    SENDER = "Hamza Hamayun <hamay001@umn.edu>"
+    
+    # Replace recipient@example.com with a "To" address. If your account 
+    # is still in the sandbox, this address must be verified.
+    RECIPIENT = "joshi461@umn.edu"
+    
+    # Specify a configuration set. If you do not want to use a configuration
+    # set, comment the following variable, and the 
+    # ConfigurationSetName=CONFIGURATION_SET argument below.
+    # CONFIGURATION_SET = "ConfigSet"
+    
+    # If necessary, replace us-west-2 with the AWS Region you're using for Amazon SES.
+    AWS_REGION = "us-east-1"
+    
+    # The subject line for the email.
+    SUBJECT = "Amazon SES Test (SDK for Python)"
+    
+    # The email body for recipients with non-HTML email clients.
+    BODY_TEXT = ("Amazon SES Test (Python)\r\n"
+                 "This email was sent with Amazon SES using the "
+                 "AWS SDK for Python (Boto)."
+                )
+                
+    # The HTML body of the email.
+    BODY_HTML = f"""<html>
+    <head></head>
+    <body>
+      <h1>Low Stock Alert</h1><br>
+        {shortlisted_products.to_html(index=False)}
+    """            
+    
+    # The character encoding for the email.
+    CHARSET = "UTF-8"
+    
+    # Create a new SES resource and specify a region.
+    client = boto3.client('ses',region_name=AWS_REGION, 
+                          aws_access_key_id="#######", 
+                          aws_secret_access_key="#######")
+    
+    # Try to send the email.
+    try:
+        #Provide the contents of the email.
+        response = client.send_email(
+            Destination={
+                'ToAddresses': [
+                    RECIPIENT,
+                ],
+            },
+            Message={
+                'Body': {
+                    'Html': {
+                        'Charset': CHARSET,
+                        'Data': BODY_HTML,
+                    },
+                    'Text': {
+                        'Charset': CHARSET,
+                        'Data': BODY_TEXT,
+                    },
+                },
+                'Subject': {
+                    'Charset': CHARSET,
+                    'Data': SUBJECT,
+                },
+            },
+            Source=SENDER,
+            # If you are not using a configuration set, comment or delete the
+            # following line
+            # ConfigurationSetName=CONFIGURATION_SET,
+        )
+    # Display an error if something goes wrong.	
+    except ClientError as e:
+        return {
+        'statusCode': -1,
+        'body': json.dumps('Email sending failed! Reason: '+e)
+    }
+    else:
+        return {
+        'statusCode': 200,
+        'body': json.dumps('Email sent!')
+    }
+    
+    
+    # TODO implement
+    
